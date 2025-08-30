@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /nonexistent/
+
+Sitemap: https://www.example.com/sitemap.xml
+
+# Crawl-delay: 10
