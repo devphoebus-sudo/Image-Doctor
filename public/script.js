@@ -1,6 +1,7 @@
 // Global variables
 let currentImage = null;
 let originalImage = null;
+let originalAspectRatio = null;
 let currentLanguage = 'en';
 let currentTheme = 'light';
 let adModal = document.getElementById('ad-modal');
@@ -19,7 +20,8 @@ const translations = {
     browseBtn: "Browse Files",
     settingsTitle: "Compression Settings",
     compressionTypeLabel: "Compression Type",
-    bothOption: "Both (Size & Resolution)",
+    defaultOption: "---Select---",
+    bothOption: "By Size & Resolution",
     sizeOption: "By Size",
     resolutionOption: "By Resolution",
     targetSizeLabel: "Target Size (KB)",
@@ -59,7 +61,8 @@ const translations = {
     browseBtn: "Buscar Archivos",
     settingsTitle: "Configuración de Compresión",
     compressionTypeLabel: "Tipo de Compresión",
-    bothOption: "Ambos (Tamaño y Resolución)",
+    defaultOption: "---Seleccionar---",
+    bothOption: "Por Tamaño y Resolución",
     sizeOption: "Por Tamaño",
     resolutionOption: "Por Resolución",
     targetSizeLabel: "Tamaño Objetivo (KB)",
@@ -99,7 +102,8 @@ const translations = {
     browseBtn: "Parcourir les Fichiers",
     settingsTitle: "Paramètres de Compression",
     compressionTypeLabel: "Type de Compression",
-    bothOption: "Les Deux (Taille & Résolution)",
+    defaultOption: "---Sélectionner---",
+    bothOption: "Par Taille et Résolution",
     sizeOption: "Par Taille",
     resolutionOption: "Par Résolution",
     targetSizeLabel: "Taille Cible (KB)",
@@ -139,7 +143,8 @@ const translations = {
     browseBtn: "Dateien Durchsuchen",
     settingsTitle: "Kompressionseinstellungen",
     compressionTypeLabel: "Kompressionstyp",
-    bothOption: "Beides (Größe & Auflösung)",
+    defaultOption: "---Auswählen---",
+    bothOption: "Nach Größe und Auflösung",
     sizeOption: "Nach Größe",
     resolutionOption: "Nach Auflösung",
     targetSizeLabel: "Zielgröße (KB)",
@@ -179,7 +184,8 @@ const translations = {
     browseBtn: "फ़ाइलें ब्राउज़ करें",
     settingsTitle: "संपीड़न सेटिंग्स",
     compressionTypeLabel: "संपीड़न प्रकार",
-    bothOption: "दोनों (आकार और रिज़ॉल्यूशन)",
+    defaultOption: "---चुनें---",
+    bothOption: "आकार और रिज़ॉल्यूशन द्वारा",
     sizeOption: "आकार द्वारा",
     resolutionOption: "रिज़ॉल्यूशन द्वारा",
     targetSizeLabel: "लक्ष्य आकार (KB)",
@@ -331,6 +337,14 @@ function setupEventListeners() {
   elements.targetResolution.addEventListener('change', handleResolutionChange);
   elements.quality.addEventListener('input', updateQualityValue);
   
+  // Add event listener for aspect ratio toggle
+  if (elements.preserveAspectRatio) {
+    elements.preserveAspectRatio.addEventListener('change', function() {
+      adjustDimensions();
+      validateInputs();
+    });
+  }
+  
   // Compression button
   elements.compressBtn.addEventListener('click', compressImage);
   
@@ -340,8 +354,14 @@ function setupEventListeners() {
   
   // Input validation
   elements.targetSize.addEventListener('input', validateInputs);
-  elements.customWidth.addEventListener('input', validateInputs);
-  elements.customHeight.addEventListener('input', validateInputs);
+  elements.customWidth.addEventListener('input', function() {
+    adjustDimensions();
+    validateInputs();
+  });
+  elements.customHeight.addEventListener('input', function() {
+    adjustDimensions();
+    validateInputs();
+  });
 }
 
 // Load user preferences
@@ -375,6 +395,7 @@ function updateLanguage() {
   elements.browseBtn.textContent = t.browseBtn;
   elements.settingsTitle.textContent = t.settingsTitle;
   elements.compressionTypeLabel.textContent = t.compressionTypeLabel;
+  document.getElementById('default-option').textContent = t.defaultOption;
   elements.bothOption.textContent = t.bothOption;
   elements.sizeOption.textContent = t.sizeOption;
   elements.resolutionOption.textContent = t.resolutionOption;
@@ -452,25 +473,26 @@ function processImageFile(file) {
   
   reader.onload = function(e) {
     const img = new Image();
-    img.onload = function() {
-      originalImage = img;
-      currentImage = img;
-      
-      // Display image preview
-      elements.imagePreview.src = e.target.result;
-      
-      // Update image info
-      const fileSize = formatFileSize(file.size);
-      elements.originalSizeValue.textContent = fileSize;
-      elements.dimensionsValue.textContent = `${img.width} × ${img.height}`;
-      
-      // Show compression controls
-      elements.uploadArea.style.display = 'none';
-      elements.compressionControls.style.display = 'grid';
-      
-      // Enable compress button
-      validateInputs();
-    };
+  img.onload = function() {
+    originalImage = img;
+    currentImage = img;
+    originalAspectRatio = img.width / img.height;
+    
+    // Display image preview
+    elements.imagePreview.src = e.target.result;
+    
+    // Update image info and store original size in bytes
+    elements.originalSizeValue.textContent = formatFileSize(file.size);
+    elements.originalSizeValue.dataset.bytes = file.size; // Store original size in bytes
+    elements.dimensionsValue.textContent = `${img.width} × ${img.height}`;
+    
+    // Show compression controls
+    elements.uploadArea.style.display = 'none';
+    elements.compressionControls.style.display = 'grid';
+    
+    // Enable compress button
+    validateInputs();
+  };
     img.src = e.target.result;
   };
   
@@ -526,6 +548,23 @@ function updateQualityValue() {
   elements.qualityValue.textContent = `${elements.quality.value}%`;
 }
 
+// Function to adjust dimensions based on aspect ratio
+function adjustDimensions() {
+  if (!originalAspectRatio) return;
+  
+  const preserveAspect = elements.preserveAspectRatio.checked;
+  const widthInput = elements.customWidth;
+  const heightInput = elements.customHeight;
+  
+  if (preserveAspect) {
+    if (document.activeElement === widthInput && widthInput.value) {
+      heightInput.value = Math.round(widthInput.value / originalAspectRatio);
+    } else if (document.activeElement === heightInput && heightInput.value) {
+      widthInput.value = Math.round(heightInput.value * originalAspectRatio);
+    }
+  }
+}
+
 function validateInputs() {
   const type = elements.compressionType.value;
   let isValid = true;
@@ -544,6 +583,9 @@ function validateInputs() {
       break;
     case 'resolution':
       if (elements.targetResolution.value === 'custom') {
+        // Adjust dimensions based on aspect ratio
+        adjustDimensions();
+        
         if (!elements.customWidth.value || !elements.customHeight.value || 
             elements.customWidth.value <= 0 || elements.customHeight.value <= 0) {
           isValid = false;
@@ -555,6 +597,9 @@ function validateInputs() {
         isValid = false;
       }
       if (elements.targetResolution.value === 'custom') {
+        // Adjust dimensions based on aspect ratio
+        adjustDimensions();
+        
         if (!elements.customWidth.value || !elements.customHeight.value || 
             elements.customWidth.value <= 0 || elements.customHeight.value <= 0) {
           isValid = false;
@@ -591,21 +636,66 @@ function skipAd() {
   startCompression();
 }
 
-function startCompression() {
-  // Simulate compression processing
-  setTimeout(() => {
-    // In a real implementation, we would compress the image here
-    // For this demo, we'll just show the result UI
+async function startCompression() {
+  try {
+    // Get compression settings
+    const quality = parseInt(elements.quality.value) / 100;
+    const targetSizeKB = elements.targetSize.value ? parseInt(elements.targetSize.value) : null;
+    let targetWidth, targetHeight;
     
-    // For demonstration purposes, let's calculate some fake compression results
-    const originalSize = parseFloat(elements.originalSizeValue.textContent);
-    const compressedSize = originalSize * (0.3 + Math.random() * 0.4); // 30-70% of original
-    const savings = originalSize - compressedSize;
+    // Get target resolution
+    if (elements.targetResolution.value === 'custom') {
+      targetWidth = parseInt(elements.customWidth.value);
+      targetHeight = parseInt(elements.customHeight.value);
+    } else {
+      const [width, height] = elements.targetResolution.value.split('x').map(Number);
+      targetWidth = width;
+      targetHeight = height;
+    }
+    
+    // Create canvas for compression
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Set canvas dimensions based on resolution settings
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    
+    // Draw image to canvas with new resolution
+    ctx.drawImage(currentImage, 0, 0, targetWidth, targetHeight);
+    
+    // Get initial compressed data URL
+    let dataUrl = canvas.toDataURL('image/jpeg', quality);
+    let blob = dataURLToBlob(dataUrl);
+    
+    // If target size is specified, adjust quality to meet target
+    if (targetSizeKB) {
+      const targetSizeBytes = targetSizeKB * 1024;
+      let currentQuality = quality;
+      
+      // Adjust quality until we meet the target size
+      while (blob.size > targetSizeBytes && currentQuality > 0.1) {
+        currentQuality -= 0.05;
+        dataUrl = canvas.toDataURL('image/jpeg', currentQuality);
+        blob = dataURLToBlob(dataUrl);
+      }
+    }
     
     // Update result display
-    elements.resultPreview.src = elements.imagePreview.src;
-    elements.compressedSizeValue.textContent = formatFileSize(compressedSize * 1024); // Convert back to bytes
-    elements.savingsValue.textContent = `${((savings / originalSize) * 100).toFixed(1)}%`;
+    elements.resultPreview.src = dataUrl;
+    
+    // Calculate savings
+    const originalSizeBytes = parseFloat(elements.originalSizeValue.dataset.bytes);
+    const compressedSizeBytes = blob.size;
+    const savingsBytes = originalSizeBytes - compressedSizeBytes;
+    const savingsPercentage = (savingsBytes / originalSizeBytes) * 100;
+    
+    // Update UI
+    elements.compressedSizeValue.textContent = formatFileSize(compressedSizeBytes);
+    elements.savingsValue.textContent = `${savingsPercentage.toFixed(1)}%`;
+    
+    // Store the compressed blob for download
+    elements.resultPreview.dataset.compressedBlob = URL.createObjectURL(blob);
     
     // Show result container
     elements.resultContainer.style.display = 'block';
@@ -617,7 +707,30 @@ function startCompression() {
     
     // Scroll to results
     elements.resultContainer.scrollIntoView({ behavior: 'smooth' });
-  }, 1500);
+  } catch (error) {
+    console.error('Compression error:', error);
+    alert('Error compressing image: ' + error.message);
+    
+    // Reset button state
+    elements.compressText.style.display = 'inline';
+    elements.compressingText.style.display = 'none';
+    elements.compressBtn.disabled = false;
+  }
+}
+
+// Helper function to convert data URL to Blob
+function dataURLToBlob(dataUrl) {
+  const arr = dataUrl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  
+  while(n--){
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  
+  return new Blob([u8arr], {type: mime});
 }
 
 // Image compression
@@ -646,15 +759,21 @@ function formatFileSize(bytes) {
 
 // Result actions
 function downloadCompressedImage() {
-  // In a real implementation, this would download the compressed image
-  // For this demo, we'll just show an alert
-  alert(translations[currentLanguage].downloadBtn + ' ' + translations[currentLanguage].featureSpeedDesc);
+  if (elements.resultPreview.dataset.compressedBlob) {
+    const a = document.createElement('a');
+    a.href = elements.resultPreview.dataset.compressedBlob;
+    a.download = 'compressed-image.jpg';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 }
 
 function resetCompressor() {
   // Reset all state
   currentImage = null;
   originalImage = null;
+  originalAspectRatio = null;
   
   // Reset UI
   elements.fileInput.value = '';
@@ -670,6 +789,11 @@ function resetCompressor() {
   elements.customHeight.value = '';
   elements.quality.value = 80;
   elements.qualityValue.textContent = '80%';
+  
+  // Reset aspect ratio toggle
+  if (elements.preserveAspectRatio) {
+    elements.preserveAspectRatio.checked = true;
+  }
   
   // Reset settings visibility
   handleCompressionTypeChange();
